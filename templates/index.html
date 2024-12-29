@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Internet Kill Switch</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin-top: 50px;
+        }
+        #toggleButton {
+            font-size: 2rem;
+            padding: 20px;
+            color: white;
+            border: none;
+            cursor: pointer;
+            border-radius: 10px;
+        }
+        #toggleButton.enabled {
+            background-color: green;
+        }
+        #toggleButton.disabled {
+            background-color: red;
+        }
+    </style>
+</head>
+<body>
+    <h1>Internet Kill Switch</h1>
+    <button id="toggleButton" class="disabled">Disabled</button>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>
