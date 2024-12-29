@@ -1,9 +1,40 @@
 from flask import Flask, jsonify, request, render_template
+import requests
 
 app = Flask(__name__)
 
-# Mock state for the port
+# Switch Configuration
+SWITCH_IP = "REDACTED_IP"
+USERNAME = "admin"
+PASSWORD = "REDACTED_PASSWORD"
+PORT_ID = 1
+
+# Mock state for demo purposes
 port_state = {"enabled": False}
+
+def login_to_switch():
+    login_url = f"http://{SWITCH_IP}/logon.cgi"
+    payload = {
+        "username": USERNAME,
+        "password": PASSWORD,
+        "cpassword": "",
+        "logon": "Login"
+    }
+    session = requests.Session()
+    response = session.post(login_url, data=payload, verify=False)
+    if response.status_code == 200 and "H_P_SSID" in session.cookies:
+        return session
+    else:
+        raise Exception("Failed to log in to the switch")
+
+def control_port(session, enable):
+    state = 1 if enable else 0
+    port_url = f"http://{SWITCH_IP}/port_setting.cgi?portid={PORT_ID}&state={state}&speed=1&flowcontrol=0&apply=Apply"
+    response = session.get(port_url, verify=False)
+    if response.status_code == 200:
+        return True
+    else:
+        return False
 
 @app.route("/")
 def home():
@@ -16,11 +47,18 @@ def get_port_state():
 @app.route("/api/port/toggle", methods=["POST"])
 def toggle_port():
     global port_state
-    # Toggle the state
-    port_state["enabled"] = not port_state["enabled"]
-    # Perform action here to control the switch (placeholder)
-    # e.g., call a function to enable/disable port via the API
-    return jsonify(port_state)
+    try:
+        session = login_to_switch()
+        new_state = not port_state["enabled"]
+        success = control_port(session, new_state)
+        if success:
+            port_state["enabled"] = new_state
+            return jsonify(port_state)
+        else:
+            return jsonify({"error": "Failed to update port state"}), 500
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
+    

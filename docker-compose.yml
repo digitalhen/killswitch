@@ -1,8 +1,6 @@
-version: "3.8"
-
+version: "3.9"
 services:
-  internet-kill-switch:
+  app:
     build: .
     ports:
-      - "8080:5000"  # Maps host port 8080 to container port 5000
-    restart: unless-stopped
+      - "8080:5000"
