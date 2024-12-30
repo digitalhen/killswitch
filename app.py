@@ -59,6 +59,31 @@ def toggle_port():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/api/port/set", methods=["POST"])
+def set_port_state():
+    """
+    Allows explicitly enabling or disabling the port via an API endpoint.
+    Expects a JSON payload: { "enabled": true/false }
+    """
+    global port_state
+    try:
+        # Parse JSON payload
+        data = request.get_json()
+        if "enabled" not in data:
+            return jsonify({"error": "'enabled' field is required"}), 400
+
+        desired_state = data["enabled"]
+
+        # Login and control the port
+        session = login_to_switch()
+        success = control_port(session, desired_state)
+        if success:
+            port_state["enabled"] = desired_state
+            return jsonify(port_state)
+        else:
+            return jsonify({"error": "Failed to set port state"}), 500
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
-    
