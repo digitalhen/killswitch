@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from zoneinfo import ZoneInfo
 
 DB_PATH = os.getenv("DB_PATH", "killswitch.db")
-TIMEZONE = os.getenv("TIMEZONE", "America/Los_Angeles")
+TIMEZONE = os.getenv("TIMEZONE", "America/New_York")
 
 def get_local_now():
     """Get current time in configured timezone"""
