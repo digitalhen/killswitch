@@ -1,16 +1,27 @@
 from flask import Flask, jsonify, request, render_template
 import requests
+from apscheduler.schedulers.background import BackgroundScheduler
+from datetime import datetime
+import os
+import db
 
 app = Flask(__name__)
 
-# Switch Configuration
-SWITCH_IP = "REDACTED_IP"
-USERNAME = "admin"
-PASSWORD = "REDACTED_PASSWORD"
-PORT_ID = 1
+# Switch Configuration (from environment variables)
+SWITCH_IP = os.getenv("SWITCH_IP", "REDACTED_IP")
+USERNAME = os.getenv("SWITCH_USERNAME", "admin")
+PASSWORD = os.getenv("SWITCH_PASSWORD", "")
+PORT_ID = int(os.getenv("SWITCH_PORT_ID", "1"))
 
-# Mock state for demo purposes
+# Timezone Configuration
+TIMEZONE = os.getenv("TIMEZONE", "America/New_York")
+
+# Port state (will be synced with actual switch and schedules)
 port_state = {"enabled": False}
+
+# Initialize scheduler
+scheduler = BackgroundScheduler()
+scheduler.start()
 
 def login_to_switch():
     login_url = f"http://{SWITCH_IP}/logon.cgi"
@@ -35,6 +46,30 @@ def control_port(session, enable):
         return True
     else:
         return False
+
+def sync_port_with_schedule():
+    """
+    Background job to sync port state with schedules
+    This runs every minute to check if the port should be enabled/disabled
+    """
+    global port_state
+    try:
+        # Cleanup expired temporary access and punishment mode
+        db.cleanup_expired_temporary_access()
+        db.cleanup_expired_punishment_mode()
+
+        # Determine if port should be enabled
+        should_be_enabled = db.should_port_be_enabled()
+
+        # Only update if state needs to change
+        if port_state["enabled"] != should_be_enabled:
+            session = login_to_switch()
+            success = control_port(session, should_be_enabled)
+            if success:
+                port_state["enabled"] = should_be_enabled
+                print(f"Port state synced: {'enabled' if should_be_enabled else 'disabled'} at {db.get_local_now()}")
+    except Exception as e:
+        print(f"Error syncing port state: {e}")
 
 @app.route("/")
 def home():
@@ -85,5 +120,203 @@ def set_port_state():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# Schedule Management Endpoints
+
+@app.route("/api/schedules", methods=["GET"])
+def get_schedules():
+    """Get all schedules"""
+    try:
+        schedules = db.get_schedules()
+        return jsonify(schedules)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/schedules", methods=["POST"])
+def add_schedule():
+    """
+    Add a new schedule
+    Expects: { "day_of_week": 0-6, "start_time": "HH:MM", "end_time": "HH:MM" }
+    """
+    try:
+        data = request.get_json()
+        day_of_week = data.get("day_of_week")
+        start_time = data.get("start_time")
+        end_time = data.get("end_time")
+
+        if day_of_week is None or not start_time or not end_time:
+            return jsonify({"error": "day_of_week, start_time, and end_time are required"}), 400
+
+        schedule_id = db.add_schedule(day_of_week, start_time, end_time)
+        return jsonify({"id": schedule_id, "message": "Schedule added successfully"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/schedules/<int:schedule_id>", methods=["DELETE"])
+def delete_schedule(schedule_id):
+    """Delete a schedule"""
+    try:
+        db.delete_schedule(schedule_id)
+        return jsonify({"message": "Schedule deleted successfully"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Temporary Access Endpoints
+
+@app.route("/api/temporary-access", methods=["POST"])
+def grant_temporary_access():
+    """
+    Grant temporary access
+    Expects: { "duration_minutes": <number> }
+    """
+    try:
+        data = request.get_json()
+        duration_minutes = data.get("duration_minutes")
+
+        if not duration_minutes or duration_minutes <= 0:
+            return jsonify({"error": "duration_minutes must be a positive number"}), 400
+
+        result = db.grant_temporary_access(duration_minutes)
+        # Immediately sync the port state
+        sync_port_with_schedule()
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/temporary-access", methods=["GET"])
+def get_temporary_access():
+    """Get active temporary access"""
+    try:
+        temp_access = db.get_active_temporary_access()
+        return jsonify(temp_access if temp_access else {})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/temporary-access", methods=["DELETE"])
+def revoke_temporary_access():
+    """Revoke active temporary access"""
+    try:
+        db.revoke_temporary_access()
+        # Immediately sync the port state
+        sync_port_with_schedule()
+        return jsonify({"message": "Temporary access revoked"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Punishment Mode Endpoints
+
+@app.route("/api/punishment-mode", methods=["POST"])
+def activate_punishment_mode():
+    """
+    Activate punishment mode - disables internet until next schedule starts
+    """
+    try:
+        result = db.activate_punishment_mode()
+        if not result:
+            return jsonify({"error": "No schedules configured - cannot activate punishment mode"}), 400
+        # Immediately sync the port state to disable
+        sync_port_with_schedule()
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/punishment-mode", methods=["GET"])
+def get_punishment_mode():
+    """Get active punishment mode"""
+    try:
+        punishment = db.get_active_punishment_mode()
+        return jsonify(punishment if punishment else {})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/punishment-mode", methods=["DELETE"])
+def revoke_punishment_mode():
+    """Revoke active punishment mode"""
+    try:
+        db.revoke_punishment_mode()
+        # Immediately sync the port state
+        sync_port_with_schedule()
+        return jsonify({"message": "Punishment mode revoked"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/status", methods=["GET"])
+def get_status():
+    """Get comprehensive status including port state, schedules, and temporary access"""
+    try:
+        now = db.get_local_now()
+        return jsonify({
+            "port_state": port_state,
+            "active_temporary_access": db.get_active_temporary_access(),
+            "active_punishment_mode": db.get_active_punishment_mode(),
+            "should_be_enabled": db.should_port_be_enabled(),
+            "schedules_count": len(db.get_schedules()),
+            "debug": {
+                "current_day": now.weekday(),
+                "current_time": now.strftime("%H:%M"),
+                "current_datetime": now.isoformat(),
+                "timezone": TIMEZONE
+            }
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/debug/schedule-check", methods=["GET"])
+def debug_schedule_check():
+    """Debug endpoint to see schedule checking logic"""
+    try:
+        now = db.get_local_now()
+        current_day = now.weekday()
+        current_time = now.strftime("%H:%M")
+
+        schedules = db.get_schedules()
+        matching_schedules = []
+
+        for schedule in schedules:
+            is_today = schedule['day_of_week'] == current_day
+            time_match = schedule['start_time'] <= current_time <= schedule['end_time']
+            matching_schedules.append({
+                "schedule": schedule,
+                "is_today": is_today,
+                "time_in_range": time_match,
+                "matches": is_today and time_match
+            })
+
+        return jsonify({
+            "current_day": current_day,
+            "current_time": current_time,
+            "current_datetime": now.isoformat(),
+            "timezone": TIMEZONE,
+            "should_be_enabled": db.should_port_be_enabled(),
+            "schedules": matching_schedules
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 if __name__ == "__main__":
+    # Initialize database
+    db.init_db()
+
+    # Force initial sync on startup to ensure switch matches schedule
+    try:
+        should_be_enabled = db.should_port_be_enabled()
+        session = login_to_switch()
+        success = control_port(session, should_be_enabled)
+        if success:
+            port_state["enabled"] = should_be_enabled
+            print(f"Startup: Port initialized to {'enabled' if should_be_enabled else 'disabled'} at {db.get_local_now()}")
+        else:
+            print("Warning: Failed to set port state on startup")
+    except Exception as e:
+        print(f"Warning: Could not sync port on startup: {e}")
+
+    # Schedule the port sync job to run every minute
+    scheduler.add_job(
+        func=sync_port_with_schedule,
+        trigger="interval",
+        minutes=1,
+        id="port_sync",
+        name="Sync port state with schedule",
+        replace_existing=True
+    )
+
     app.run(host="0.0.0.0", port=5000)

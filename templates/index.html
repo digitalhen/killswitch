@@ -5,30 +5,224 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Internet Kill Switch</title>
     <style>
+        * {
+            box-sizing: border-box;
+        }
         body {
-            font-family: Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
             text-align: center;
-            margin-top: 50px;
+            color: #333;
+        }
+        h2 {
+            margin-top: 0;
+            color: #555;
+            font-size: 1.3rem;
+        }
+        .status-section {
+            text-align: center;
         }
         #toggleButton {
-            font-size: 2rem;
-            padding: 20px;
+            font-size: 1.5rem;
+            padding: 15px 30px;
             color: white;
             border: none;
             cursor: pointer;
-            border-radius: 10px;
+            border-radius: 8px;
+            margin: 10px;
+            transition: opacity 0.2s;
+        }
+        #toggleButton:hover {
+            opacity: 0.9;
         }
         #toggleButton.enabled {
-            background-color: green;
+            background-color: #28a745;
         }
         #toggleButton.disabled {
-            background-color: red;
+            background-color: #dc3545;
+        }
+        .status-info {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            font-size: 0.9rem;
+        }
+        .temp-access-section {
+            margin-top: 20px;
+        }
+        .temp-access-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+        .temp-access-buttons button {
+            padding: 10px 20px;
+            border: none;
+            background: #007bff;
+            color: white;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+        .temp-access-buttons button:hover {
+            background: #0056b3;
+        }
+        .temp-access-buttons button.revoke {
+            background: #dc3545;
+        }
+        .temp-access-buttons button.revoke:hover {
+            background: #c82333;
+        }
+        #tempAccessStatus {
+            margin-top: 15px;
+            padding: 10px;
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            border-radius: 6px;
+            color: #155724;
+            display: none;
+        }
+        #punishmentStatus {
+            margin-top: 15px;
+            padding: 10px;
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            border-radius: 6px;
+            color: #721c24;
+            display: none;
+        }
+        .schedule-section {
+            margin-top: 20px;
+        }
+        .schedule-form {
+            display: grid;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .schedule-form select,
+        .schedule-form input {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+        .schedule-form button {
+            padding: 10px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+        .schedule-form button:hover {
+            background: #218838;
+        }
+        .schedule-list {
+            margin-top: 15px;
+        }
+        .schedule-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            margin-bottom: 8px;
+        }
+        .schedule-item button {
+            padding: 5px 10px;
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+        .schedule-item button:hover {
+            background: #c82333;
+        }
+        .empty-state {
+            padding: 20px;
+            text-align: center;
+            color: #999;
+            font-style: italic;
         }
     </style>
 </head>
 <body>
     <h1>Internet Kill Switch</h1>
-    <button id="toggleButton" class="disabled">Disabled</button>
+
+    <div class="card status-section">
+        <h2>Port Control</h2>
+        <button id="toggleButton" class="disabled">Disabled</button>
+        <div class="status-info">
+            <div><strong>Current Time:</strong> <span id="currentTime">--:--:--</span></div>
+            <div><strong>Port Status:</strong> <span id="portStatus">Unknown</span></div>
+            <div><strong>Should Be Enabled:</strong> <span id="shouldBeEnabled">Unknown</span></div>
+            <div><strong>Active Schedules:</strong> <span id="scheduleCount">0</span></div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Temporary Access</h2>
+        <p>Grant temporary internet access (overrides schedules):</p>
+        <div class="temp-access-buttons">
+            <button onclick="grantTempAccess(30)">30 minutes</button>
+            <button onclick="grantTempAccess(60)">1 hour</button>
+            <button onclick="grantTempAccess(120)">2 hours</button>
+            <button onclick="grantTempAccess(180)">3 hours</button>
+            <button class="revoke" onclick="revokeTempAccess()">Revoke Access</button>
+        </div>
+        <div id="tempAccessStatus"></div>
+    </div>
+
+    <div class="card">
+        <h2>Punishment Mode</h2>
+        <p>Disable internet until the next scheduled time window starts:</p>
+        <div class="temp-access-buttons">
+            <button class="revoke" onclick="activatePunishment()">Disable Until Next Schedule</button>
+            <button onclick="revokePunishment()">Cancel Punishment</button>
+        </div>
+        <div id="punishmentStatus"></div>
+    </div>
+
+    <div class="card">
+        <h2>Weekly Schedule</h2>
+        <p>Set allowed internet hours for each day (0=Monday, 6=Sunday):</p>
+        <div class="schedule-form">
+            <select id="dayOfWeek">
+                <option value="0">Monday</option>
+                <option value="1">Tuesday</option>
+                <option value="2">Wednesday</option>
+                <option value="3">Thursday</option>
+                <option value="4">Friday</option>
+                <option value="5">Saturday</option>
+                <option value="6">Sunday</option>
+            </select>
+            <input type="time" id="startTime" value="07:00">
+            <input type="time" id="endTime" value="22:00">
+            <button onclick="addSchedule()">Add Schedule</button>
+        </div>
+        <div class="schedule-list" id="scheduleList">
+            <div class="empty-state">No schedules configured</div>
+        </div>
+    </div>
 
     <script src="/static/script.js"></script>
 </body>

@@ -5,3 +5,7 @@ services:
     ports:
       - "9090:5000"
     restart: always
+    volumes:
+      - ./data:/app/data
+    env_file:
+      - .env
