@@ -100,23 +100,50 @@ def delete_schedule(schedule_id):
 def grant_temporary_access(duration_minutes):
     """
     Grant temporary access for a specified duration
+    If temp access is already active, extends it by the additional duration
     Returns the expiration time
     """
     now = get_local_now()
-    expires_at = now + timedelta(minutes=duration_minutes)
 
-    with get_db() as conn:
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO temporary_access (granted_at, expires_at, active)
-            VALUES (?, ?, 1)
-        """, (now.isoformat(), expires_at.isoformat()))
-        conn.commit()
-        return {
-            "id": cursor.lastrowid,
-            "granted_at": now.isoformat(),
-            "expires_at": expires_at.isoformat()
-        }
+    # Check if there's already active temporary access
+    existing = get_active_temporary_access()
+
+    if existing:
+        # Extend existing access by adding duration to current expiration
+        current_expires = datetime.fromisoformat(existing['expires_at'])
+        new_expires = current_expires + timedelta(minutes=duration_minutes)
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE temporary_access
+                SET expires_at = ?
+                WHERE id = ?
+            """, (new_expires.isoformat(), existing['id']))
+            conn.commit()
+            return {
+                "id": existing['id'],
+                "granted_at": existing['granted_at'],
+                "expires_at": new_expires.isoformat(),
+                "extended": True
+            }
+    else:
+        # Create new temporary access
+        expires_at = now + timedelta(minutes=duration_minutes)
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO temporary_access (granted_at, expires_at, active)
+                VALUES (?, ?, 1)
+            """, (now.isoformat(), expires_at.isoformat()))
+            conn.commit()
+            return {
+                "id": cursor.lastrowid,
+                "granted_at": now.isoformat(),
+                "expires_at": expires_at.isoformat(),
+                "extended": False
+            }
 
 def get_active_temporary_access():
     """Get active temporary access grant (if any)"""

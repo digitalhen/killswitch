@@ -79,14 +79,24 @@
             cursor: pointer;
             font-size: 0.9rem;
         }
-        .temp-access-buttons button:hover {
+        .temp-access-buttons button:hover:not(:disabled) {
             background: #0056b3;
+        }
+        .temp-access-buttons button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+            opacity: 0.5;
         }
         .temp-access-buttons button.revoke {
             background: #dc3545;
         }
-        .temp-access-buttons button.revoke:hover {
+        .temp-access-buttons button.revoke:hover:not(:disabled) {
             background: #c82333;
+        }
+        .temp-access-buttons button.revoke:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+            opacity: 0.5;
         }
         #tempAccessStatus {
             margin-top: 15px;
@@ -181,13 +191,13 @@
 
     <div class="card">
         <h2>Temporary Access</h2>
-        <p>Grant temporary internet access (overrides schedules):</p>
+        <p>Grant temporary internet access (overrides schedules). Click multiple times to add more time:</p>
         <div class="temp-access-buttons">
-            <button onclick="grantTempAccess(30)">30 minutes</button>
-            <button onclick="grantTempAccess(60)">1 hour</button>
-            <button onclick="grantTempAccess(120)">2 hours</button>
-            <button onclick="grantTempAccess(180)">3 hours</button>
-            <button class="revoke" onclick="revokeTempAccess()">Revoke Access</button>
+            <button id="grantBtn30" onclick="grantTempAccess(30)">30 minutes</button>
+            <button id="grantBtn60" onclick="grantTempAccess(60)">1 hour</button>
+            <button id="grantBtn120" onclick="grantTempAccess(120)">2 hours</button>
+            <button id="grantBtn180" onclick="grantTempAccess(180)">3 hours</button>
+            <button id="revokeTempBtn" class="revoke" onclick="revokeTempAccess()">Revoke Access</button>
         </div>
         <div id="tempAccessStatus"></div>
     </div>
@@ -196,8 +206,8 @@
         <h2>Punishment Mode</h2>
         <p>Disable internet until the next scheduled time window starts:</p>
         <div class="temp-access-buttons">
-            <button class="revoke" onclick="activatePunishment()">Disable Until Next Schedule</button>
-            <button onclick="revokePunishment()">Cancel Punishment</button>
+            <button id="activatePunishmentBtn" class="revoke" onclick="activatePunishment()">Disable Until Next Schedule</button>
+            <button id="revokePunishmentBtn" onclick="revokePunishment()">Cancel Punishment</button>
         </div>
         <div id="punishmentStatus"></div>
     </div>

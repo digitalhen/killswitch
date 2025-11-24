@@ -57,6 +57,9 @@ document.addEventListener("DOMContentLoaded", () => {
     fetchPunishment();
     updateCurrentTime();
 
+    // Initial button state update
+    updateButtonStates();
+
     // Update time every second
     setInterval(updateCurrentTime, 1000);
 
@@ -92,6 +95,11 @@ async function grantTempAccess(minutes) {
         });
 
         if (response.ok) {
+            const data = await response.json();
+            // Show feedback if time was extended
+            if (data.extended) {
+                console.log(`Extended temporary access by ${minutes} minutes`);
+            }
             await fetchTempAccess();
             await fetchStatus();
         } else {
@@ -122,8 +130,9 @@ async function fetchTempAccess() {
         const data = await response.json();
 
         const statusDiv = document.getElementById("tempAccessStatus");
+        const hasTempAccess = data && data.expires_at;
 
-        if (data && data.expires_at) {
+        if (hasTempAccess) {
             const expiresAt = new Date(data.expires_at);
             const now = new Date();
             const minutesLeft = Math.round((expiresAt - now) / 60000);
@@ -133,6 +142,9 @@ async function fetchTempAccess() {
         } else {
             statusDiv.style.display = "none";
         }
+
+        // Update button states
+        updateButtonStates();
     } catch (error) {
         console.error("Error fetching temporary access:", error);
     }
@@ -201,6 +213,9 @@ async function fetchSchedules() {
                 </div>
             `).join("");
         }
+
+        // Update button states when schedules change
+        updateButtonStates();
     } catch (error) {
         console.error("Error fetching schedules:", error);
     }
@@ -248,15 +263,61 @@ async function fetchPunishment() {
         const data = await response.json();
 
         const statusDiv = document.getElementById("punishmentStatus");
+        const hasPunishment = data && data.expires_at;
 
-        if (data && data.expires_at) {
+        if (hasPunishment) {
             const expiresAt = new Date(data.expires_at);
             statusDiv.style.display = "block";
             statusDiv.innerHTML = `<strong>ACTIVE:</strong> Internet disabled until next schedule at ${expiresAt.toLocaleString()}`;
         } else {
             statusDiv.style.display = "none";
         }
+
+        // Update button states
+        updateButtonStates();
     } catch (error) {
         console.error("Error fetching punishment mode:", error);
+    }
+}
+
+// Update button enabled/disabled states based on current status
+async function updateButtonStates() {
+    try {
+        // Fetch current states
+        const tempAccessResponse = await fetch("/api/temporary-access");
+        const tempAccessData = await tempAccessResponse.json();
+        const hasTempAccess = tempAccessData && tempAccessData.expires_at;
+
+        const punishmentResponse = await fetch("/api/punishment-mode");
+        const punishmentData = await punishmentResponse.json();
+        const hasPunishment = punishmentData && punishmentData.expires_at;
+
+        const schedulesResponse = await fetch("/api/schedules");
+        const schedules = await schedulesResponse.json();
+        const hasSchedules = schedules && schedules.length > 0;
+
+        // Temporary Access buttons
+        const grantButtons = ["grantBtn30", "grantBtn60", "grantBtn120", "grantBtn180"];
+        grantButtons.forEach(btnId => {
+            const btn = document.getElementById(btnId);
+            // Disable grant buttons only if punishment is active (temp access won't have effect)
+            // Allow granting more time on top of existing temp access
+            btn.disabled = hasPunishment;
+        });
+
+        // Revoke temp access button
+        const revokeTempBtn = document.getElementById("revokeTempBtn");
+        revokeTempBtn.disabled = !hasTempAccess;
+
+        // Punishment mode buttons
+        const activatePunishmentBtn = document.getElementById("activatePunishmentBtn");
+        // Can only activate punishment if: no punishment active AND schedules exist
+        activatePunishmentBtn.disabled = hasPunishment || !hasSchedules;
+
+        const revokePunishmentBtn = document.getElementById("revokePunishmentBtn");
+        revokePunishmentBtn.disabled = !hasPunishment;
+
+    } catch (error) {
+        console.error("Error updating button states:", error);
     }
 }
