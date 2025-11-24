@@ -54,22 +54,31 @@ def sync_port_with_schedule():
     """
     global port_state
     try:
+        now = db.get_local_now()
+        print(f"[SCHEDULER] Running sync check at {now.strftime('%Y-%m-%d %H:%M:%S')}")
+
         # Cleanup expired temporary access and punishment mode
         db.cleanup_expired_temporary_access()
         db.cleanup_expired_punishment_mode()
 
         # Determine if port should be enabled
         should_be_enabled = db.should_port_be_enabled()
+        print(f"[SCHEDULER] Current port state: {port_state['enabled']}, Should be: {should_be_enabled}")
 
         # Only update if state needs to change
         if port_state["enabled"] != should_be_enabled:
+            print(f"[SCHEDULER] State change needed, updating switch...")
             session = login_to_switch()
             success = control_port(session, should_be_enabled)
             if success:
                 port_state["enabled"] = should_be_enabled
-                print(f"Port state synced: {'enabled' if should_be_enabled else 'disabled'} at {db.get_local_now()}")
+                print(f"[SCHEDULER] SUCCESS: Port state synced to {'enabled' if should_be_enabled else 'disabled'}")
+            else:
+                print(f"[SCHEDULER] FAILED: Could not update switch")
+        else:
+            print(f"[SCHEDULER] No change needed, port already in correct state")
     except Exception as e:
-        print(f"Error syncing port state: {e}")
+        print(f"[SCHEDULER] ERROR: {e}")
 
 @app.route("/")
 def home():
@@ -281,13 +290,26 @@ def debug_schedule_check():
                 "matches": is_today and time_match
             })
 
+        # Get scheduler status
+        scheduler_running = scheduler.running
+        jobs = [{
+            'id': job.id,
+            'name': job.name,
+            'next_run': job.next_run_time.isoformat() if job.next_run_time else None
+        } for job in scheduler.get_jobs()]
+
         return jsonify({
             "current_day": current_day,
             "current_time": current_time,
             "current_datetime": now.isoformat(),
             "timezone": TIMEZONE,
             "should_be_enabled": db.should_port_be_enabled(),
-            "schedules": matching_schedules
+            "schedules": matching_schedules,
+            "scheduler": {
+                "running": scheduler_running,
+                "jobs": jobs
+            },
+            "port_state": port_state
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -316,7 +338,9 @@ if __name__ == "__main__":
         minutes=1,
         id="port_sync",
         name="Sync port state with schedule",
-        replace_existing=True
+        replace_existing=True,
+        misfire_grace_time=30,  # Allow up to 30 seconds delay without warning
+        coalesce=True  # If multiple runs are missed, only run once
     )
 
     app.run(host="0.0.0.0", port=5000)
