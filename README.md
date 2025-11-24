@@ -2,6 +2,18 @@
 
 A Docker-based web application for controlling a network switch port to manage internet access. Designed for parental controls with scheduling capabilities.
 
+## Hardware Compatibility
+
+This application is designed to work with **TP-Link Easy Smart Switches**, specifically tested with the **TL-SG105E** and similar models in the series (TL-SG108E, etc.). These switches provide a web-based management interface that the application uses to control individual ports.
+
+## Parental Control Use Case
+
+This tool provides **hardware-level internet control** for parental supervision. By connecting a child's computer or an entire room's network equipment to a managed switch port, you can enforce internet access schedules at the network layer.
+
+**Key advantage**: As long as the physical switch is secured (locked in a network cabinet or placed out of reach), this provides tamper-proof internet control. Unlike software-based parental controls that can be bypassed, circumvented, or disabled, controlling the network switch port completely cuts off internet connectivity at the hardware level - there's no workaround available to the end user.
+
+**Typical setup**: Place the child's computer, gaming console, or room's access point on the controlled switch port. The switch itself should be physically secured where it cannot be accessed or reset by the child.
+
 ## Features
 
 - Manual port control via web interface
