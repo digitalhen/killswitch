@@ -63,8 +63,9 @@ document.addEventListener("DOMContentLoaded", () => {
     // Update time every second
     setInterval(updateCurrentTime, 1000);
 
-    // Auto-refresh status every 10 seconds
+    // Auto-refresh status and port state every 10 seconds
     setInterval(() => {
+        fetchPortState();  // Update the main toggle button
         fetchStatus();
         fetchTempAccess();
         fetchPunishment();
@@ -102,6 +103,7 @@ async function grantTempAccess(minutes) {
             }
             await fetchTempAccess();
             await fetchStatus();
+            await fetchPortState();  // Update the main toggle button
         } else {
             const error = await response.json();
             alert("Error: " + error.error);
@@ -118,6 +120,7 @@ async function revokeTempAccess() {
         if (response.ok) {
             await fetchTempAccess();
             await fetchStatus();
+            await fetchPortState();  // Update the main toggle button
         }
     } catch (error) {
         console.error("Error revoking temporary access:", error);
