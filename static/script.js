@@ -1,5 +1,9 @@
 const dayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
+// Global state
+let currentDeviceId = null;
+let devices = [];
+
 // Update current time display
 function updateCurrentTime() {
     const now = new Date();
@@ -8,10 +12,55 @@ function updateCurrentTime() {
     document.getElementById("currentTime").textContent = `${dayString} ${timeString}`;
 }
 
+// Load devices and populate selector
+async function loadDevices() {
+    try {
+        const response = await fetch("/api/devices");
+        devices = await response.json();
+
+        const selector = document.getElementById("deviceSelector");
+        selector.innerHTML = devices.map(d =>
+            `<option value="${d.id}" ${d.is_default ? 'selected' : ''}>${d.alias}</option>`
+        ).join("");
+
+        // Set current device to default
+        const defaultDevice = devices.find(d => d.is_default);
+        currentDeviceId = defaultDevice ? defaultDevice.id : devices[0]?.id;
+
+        // Update device name display
+        updateDeviceName();
+
+        // Add change listener
+        selector.addEventListener("change", (e) => {
+            currentDeviceId = parseInt(e.target.value);
+            updateDeviceName();
+            // Refresh all data for new device
+            fetchPortState();
+            fetchStatus();
+            fetchSchedules();
+            fetchTempAccess();
+            fetchPunishment();
+        });
+    } catch (error) {
+        console.error("Error loading devices:", error);
+    }
+}
+
+function updateDeviceName() {
+    const device = devices.find(d => d.id === currentDeviceId);
+    if (device) {
+        document.getElementById("deviceName").textContent = `Controlling: ${device.alias} (${device.ip}:${device.port_id})`;
+    }
+}
+
+function getApiUrl(path) {
+    return `${path}?device_id=${currentDeviceId}`;
+}
+
 // Function to fetch the current port state
 async function fetchPortState() {
     try {
-        const response = await fetch("/api/port/state");
+        const response = await fetch(getApiUrl("/api/port/state"));
         const data = await response.json();
         updateButtonState(data.enabled);
     } catch (error) {
@@ -31,13 +80,13 @@ function updateButtonState(enabled) {
     }
 }
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
     const button = document.getElementById("toggleButton");
 
     // Function to toggle the port state
     const togglePort = async () => {
         try {
-            const response = await fetch("/api/port/toggle", { method: "POST" });
+            const response = await fetch(getApiUrl("/api/port/toggle"), { method: "POST" });
             const data = await response.json();
             updateButtonState(data.enabled);
             await fetchStatus();
@@ -48,6 +97,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Attach event listener to the button
     button.addEventListener("click", togglePort);
+
+    // Load devices first
+    await loadDevices();
 
     // Fetch initial state
     fetchPortState();
@@ -75,7 +127,7 @@ document.addEventListener("DOMContentLoaded", () => {
 // Fetch comprehensive status
 async function fetchStatus() {
     try {
-        const response = await fetch("/api/status");
+        const response = await fetch(getApiUrl("/api/status"));
         const data = await response.json();
 
         document.getElementById("portStatus").textContent = data.port_state.enabled ? "Enabled" : "Disabled";
@@ -89,10 +141,10 @@ async function fetchStatus() {
 // Temporary Access Functions
 async function grantTempAccess(minutes) {
     try {
-        const response = await fetch("/api/temporary-access", {
+        const response = await fetch(getApiUrl("/api/temporary-access"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ duration_minutes: minutes })
+            body: JSON.stringify({ duration_minutes: minutes, device_id: currentDeviceId })
         });
 
         if (response.ok) {
@@ -115,7 +167,7 @@ async function grantTempAccess(minutes) {
 
 async function revokeTempAccess() {
     try {
-        const response = await fetch("/api/temporary-access", { method: "DELETE" });
+        const response = await fetch(getApiUrl("/api/temporary-access"), { method: "DELETE" });
 
         if (response.ok) {
             await fetchTempAccess();
@@ -129,7 +181,7 @@ async function revokeTempAccess() {
 
 async function fetchTempAccess() {
     try {
-        const response = await fetch("/api/temporary-access");
+        const response = await fetch(getApiUrl("/api/temporary-access"));
         const data = await response.json();
 
         const statusDiv = document.getElementById("tempAccessStatus");
@@ -160,13 +212,14 @@ async function addSchedule() {
     const endTime = document.getElementById("endTime").value;
 
     try {
-        const response = await fetch("/api/schedules", {
+        const response = await fetch(getApiUrl("/api/schedules"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 day_of_week: dayOfWeek,
                 start_time: startTime,
-                end_time: endTime
+                end_time: endTime,
+                device_id: currentDeviceId
             })
         });
 
@@ -201,7 +254,7 @@ async function deleteSchedule(scheduleId) {
 
 async function fetchSchedules() {
     try {
-        const response = await fetch("/api/schedules");
+        const response = await fetch(getApiUrl("/api/schedules"));
         const schedules = await response.json();
 
         const listDiv = document.getElementById("scheduleList");
@@ -231,7 +284,11 @@ async function activatePunishment() {
     }
 
     try {
-        const response = await fetch("/api/punishment-mode", { method: "POST" });
+        const response = await fetch(getApiUrl("/api/punishment-mode"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ device_id: currentDeviceId })
+        });
 
         if (response.ok) {
             await fetchPunishment();
@@ -248,7 +305,7 @@ async function activatePunishment() {
 
 async function revokePunishment() {
     try {
-        const response = await fetch("/api/punishment-mode", { method: "DELETE" });
+        const response = await fetch(getApiUrl("/api/punishment-mode"), { method: "DELETE" });
 
         if (response.ok) {
             await fetchPunishment();
@@ -262,7 +319,7 @@ async function revokePunishment() {
 
 async function fetchPunishment() {
     try {
-        const response = await fetch("/api/punishment-mode");
+        const response = await fetch(getApiUrl("/api/punishment-mode"));
         const data = await response.json();
 
         const statusDiv = document.getElementById("punishmentStatus");
@@ -287,15 +344,15 @@ async function fetchPunishment() {
 async function updateButtonStates() {
     try {
         // Fetch current states
-        const tempAccessResponse = await fetch("/api/temporary-access");
+        const tempAccessResponse = await fetch(getApiUrl("/api/temporary-access"));
         const tempAccessData = await tempAccessResponse.json();
         const hasTempAccess = tempAccessData && tempAccessData.expires_at;
 
-        const punishmentResponse = await fetch("/api/punishment-mode");
+        const punishmentResponse = await fetch(getApiUrl("/api/punishment-mode"));
         const punishmentData = await punishmentResponse.json();
         const hasPunishment = punishmentData && punishmentData.expires_at;
 
-        const schedulesResponse = await fetch("/api/schedules");
+        const schedulesResponse = await fetch(getApiUrl("/api/schedules"));
         const schedules = await schedulesResponse.json();
         const hasSchedules = schedules && schedules.length > 0;
 

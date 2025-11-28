@@ -178,8 +178,16 @@
 <body>
     <h1>Internet Kill Switch</h1>
 
+    <div class="card">
+        <h2>Device Selection</h2>
+        <select id="deviceSelector" style="width: 100%; padding: 10px; font-size: 1rem; border: 1px solid #ddd; border-radius: 6px;">
+            <option value="">Loading devices...</option>
+        </select>
+    </div>
+
     <div class="card status-section">
         <h2>Port Control</h2>
+        <div id="deviceName" style="font-size: 0.9rem; color: #666; margin-bottom: 10px;"></div>
         <button id="toggleButton" class="disabled">Disabled</button>
         <div class="status-info">
             <div><strong>Current Time:</strong> <span id="currentTime">--:--:--</span></div>
