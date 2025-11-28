@@ -51,30 +51,37 @@ def init_db():
         device_count = cursor.fetchone()[0]
 
         if device_count == 0:
-            # First time setup - create default devices from environment variables
-            default_ip = os.getenv("SWITCH_IP", "192.168.1.1")
+            # First time setup - create default device from environment variables
+            # This only happens on the very first run
+            default_ip = os.getenv("SWITCH_IP")
             default_username = os.getenv("SWITCH_USERNAME", "admin")
             default_password = os.getenv("SWITCH_PASSWORD", "")
             default_port_id = int(os.getenv("SWITCH_PORT_ID", "1"))
+            default_alias = os.getenv("SWITCH_ALIAS", "Default Switch")
 
-            # Create "Boys' Room" device (default)
-            cursor.execute("""
-                INSERT INTO devices (alias, ip, username, password, port_id, is_default)
-                VALUES (?, ?, ?, ?, ?, 1)
-            """, ("Boys' Room", default_ip, default_username, default_password, default_port_id))
+            if default_ip:
+                # Create default device from environment variables
+                cursor.execute("""
+                    INSERT INTO devices (alias, ip, username, password, port_id, is_default)
+                    VALUES (?, ?, ?, ?, ?, 1)
+                """, (default_alias, default_ip, default_username, default_password, default_port_id))
+                print(f"Initial setup: Created device '{default_alias}' from environment variables")
+            else:
+                print("WARNING: No SWITCH_IP in environment and no devices in database.")
+                print("Please configure devices via the web UI at /config")
 
-            # Create "Living Room TV" device
-            cursor.execute("""
-                INSERT INTO devices (alias, ip, username, password, port_id, is_default)
-                VALUES (?, ?, ?, ?, ?, 0)
-            """, ("Living Room TV", "192.168.50.21", default_username, default_password, 4))
+        # Check if schedules table exists and needs migration (add device_id column)
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='schedules'")
+        schedules_exists = cursor.fetchone() is not None
 
-        # Check if schedules table needs migration (add device_id column)
-        cursor.execute("PRAGMA table_info(schedules)")
-        columns = [column[1] for column in cursor.fetchall()]
-        needs_migration = 'device_id' not in columns
+        if schedules_exists:
+            cursor.execute("PRAGMA table_info(schedules)")
+            columns = [column[1] for column in cursor.fetchall()]
+            needs_migration = 'device_id' not in columns
+        else:
+            needs_migration = False
 
-        if needs_migration:
+        if schedules_exists and needs_migration:
             # Get default device id for migration
             default_device_id = get_default_device_id()
 
@@ -204,6 +211,56 @@ def get_device(device_id):
         cursor.execute("SELECT * FROM devices WHERE id = ?", (device_id,))
         row = cursor.fetchone()
         return dict(row) if row else None
+
+def add_device(alias, ip, username, password, port_id, is_default=False):
+    """Add a new device"""
+    with get_db() as conn:
+        cursor = conn.cursor()
+
+        # If this is being set as default, unset other defaults
+        if is_default:
+            cursor.execute("UPDATE devices SET is_default = 0")
+
+        cursor.execute("""
+            INSERT INTO devices (alias, ip, username, password, port_id, is_default)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (alias, ip, username, password, port_id, 1 if is_default else 0))
+        conn.commit()
+        return cursor.lastrowid
+
+def update_device(device_id, alias, ip, username, password, port_id, is_default=False):
+    """Update an existing device"""
+    with get_db() as conn:
+        cursor = conn.cursor()
+
+        # If this is being set as default, unset other defaults
+        if is_default:
+            cursor.execute("UPDATE devices SET is_default = 0 WHERE id != ?", (device_id,))
+
+        cursor.execute("""
+            UPDATE devices
+            SET alias = ?, ip = ?, username = ?, password = ?, port_id = ?, is_default = ?
+            WHERE id = ?
+        """, (alias, ip, username, password, port_id, 1 if is_default else 0, device_id))
+        conn.commit()
+
+def delete_device(device_id):
+    """Delete a device (and all associated data via CASCADE)"""
+    with get_db() as conn:
+        cursor = conn.cursor()
+
+        # Check if this is the default device
+        cursor.execute("SELECT is_default FROM devices WHERE id = ?", (device_id,))
+        row = cursor.fetchone()
+        if row and row[0] == 1:
+            # If deleting the default, make another device the default
+            cursor.execute("SELECT id FROM devices WHERE id != ? LIMIT 1", (device_id,))
+            new_default = cursor.fetchone()
+            if new_default:
+                cursor.execute("UPDATE devices SET is_default = 1 WHERE id = ?", (new_default[0],))
+
+        cursor.execute("DELETE FROM devices WHERE id = ?", (device_id,))
+        conn.commit()
 
 def add_schedule(day_of_week, start_time, end_time, device_id=None):
     """

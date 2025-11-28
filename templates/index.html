@@ -176,7 +176,10 @@
     </style>
 </head>
 <body>
-    <h1>Internet Kill Switch</h1>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h1 style="margin: 0;">Internet Kill Switch</h1>
+        <a href="/config" style="color: #007bff; text-decoration: none; font-size: 0.9rem;">⚙️ Configure Devices</a>
+    </div>
 
     <div class="card">
         <h2>Device Selection</h2>
@@ -222,7 +225,7 @@
 
     <div class="card">
         <h2>Weekly Schedule</h2>
-        <p>Set allowed internet hours for each day (0=Monday, 6=Sunday):</p>
+        <p>Set allowed internet hours for each day:</p>
         <div class="schedule-form">
             <select id="dayOfWeek">
                 <option value="0">Monday</option>

@@ -118,15 +118,117 @@ def sync_port_with_schedule(device_id=None):
 def home():
     return render_template("index.html")
 
+@app.route("/config")
+def config():
+    return render_template("config.html")
+
 @app.route("/api/devices", methods=["GET"])
 def get_devices():
     """Get all configured devices"""
     try:
         devices = db.get_devices()
-        # Don't expose passwords in API response
+        # Don't expose passwords in API response for GET
         for device in devices:
             device.pop('password', None)
         return jsonify(devices)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/devices/<int:device_id>", methods=["GET"])
+def get_device(device_id):
+    """Get a specific device including password (for editing)"""
+    try:
+        device = db.get_device(device_id)
+        if not device:
+            return jsonify({"error": "Device not found"}), 404
+        return jsonify(device)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/devices", methods=["POST"])
+def add_device():
+    """
+    Add a new device
+    Expects: { "alias": string, "ip": string, "username": string, "password": string, "port_id": int, "is_default": bool }
+    """
+    try:
+        data = request.get_json()
+        required_fields = ["alias", "ip", "username", "password", "port_id"]
+
+        for field in required_fields:
+            if field not in data:
+                return jsonify({"error": f"'{field}' is required"}), 400
+
+        device_id = db.add_device(
+            alias=data["alias"],
+            ip=data["ip"],
+            username=data["username"],
+            password=data["password"],
+            port_id=int(data["port_id"]),
+            is_default=data.get("is_default", False)
+        )
+
+        # Initialize port state for new device
+        global port_states
+        port_states[device_id] = {"enabled": False}
+
+        return jsonify({"id": device_id, "message": "Device added successfully"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/devices/<int:device_id>", methods=["PUT"])
+def update_device(device_id):
+    """
+    Update an existing device
+    Expects: { "alias": string, "ip": string, "username": string, "password": string, "port_id": int, "is_default": bool }
+    """
+    try:
+        device = db.get_device(device_id)
+        if not device:
+            return jsonify({"error": "Device not found"}), 404
+
+        data = request.get_json()
+        required_fields = ["alias", "ip", "username", "password", "port_id"]
+
+        for field in required_fields:
+            if field not in data:
+                return jsonify({"error": f"'{field}' is required"}), 400
+
+        db.update_device(
+            device_id=device_id,
+            alias=data["alias"],
+            ip=data["ip"],
+            username=data["username"],
+            password=data["password"],
+            port_id=int(data["port_id"]),
+            is_default=data.get("is_default", False)
+        )
+
+        return jsonify({"message": "Device updated successfully"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/devices/<int:device_id>", methods=["DELETE"])
+def delete_device(device_id):
+    """Delete a device"""
+    try:
+        device = db.get_device(device_id)
+        if not device:
+            return jsonify({"error": "Device not found"}), 404
+
+        # Check if there's more than one device
+        devices = db.get_devices()
+        if len(devices) <= 1:
+            return jsonify({"error": "Cannot delete the last device"}), 400
+
+        db.delete_device(device_id)
+
+        # Remove from port_states cache
+        global port_states
+        if device_id in port_states:
+            del port_states[device_id]
+
+        return jsonify({"message": "Device deleted successfully"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
